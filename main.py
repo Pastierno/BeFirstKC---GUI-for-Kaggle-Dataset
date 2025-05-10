@@ -12,8 +12,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
 
 class DataAnalysisApp(QMainWindow):
     def __init__(self):
@@ -62,8 +60,8 @@ class DataAnalysisApp(QMainWindow):
         info_layout = QHBoxLayout()
         self.info_btn = QPushButton("Show DataFrame Info")
         self.info_btn.clicked.connect(self.show_info)
-        layout.addLayout(info_layout)
         info_layout.addWidget(self.info_btn)
+        layout.addLayout(info_layout)
 
         # Dtype conversion
         dtype_layout = QHBoxLayout()
@@ -115,7 +113,7 @@ class DataAnalysisApp(QMainWindow):
         model_layout = QHBoxLayout()
         model_layout.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
-        self.model_combo.addItems(["LogisticRegression","RandomForest","XGBoost","LightGBM","DeepLearning"])
+        self.model_combo.addItems(["LogisticRegression","RandomForest","XGBoost","LightGBM"])
         model_layout.addWidget(self.model_combo)
         self.train_btn2 = QPushButton("Train Model")
         self.train_btn2.clicked.connect(self.train_model)
@@ -227,15 +225,7 @@ class DataAnalysisApp(QMainWindow):
             self.model = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
         elif model_name == 'LightGBM':
             self.model = LGBMClassifier()
-        else:
-            # Deep Learning
-            n_features = X.shape[1]
-            self.model = Sequential([Dense(64, activation='relu', input_shape=(n_features,)), Dropout(0.5), Dense(1, activation='sigmoid')])
-            self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-        if model_name != 'DeepLearning':
-            self.model.fit(X, y)
-        else:
-            self.model.fit(X, y, epochs=10, batch_size=32)
+        self.model.fit(X, y)
         self.output.append(f"Trained {model_name}")
 
     def predict(self):
@@ -243,8 +233,12 @@ class DataAnalysisApp(QMainWindow):
             return
         df_test = self.test_df.copy()
         # Apply same transforms
-        self.transformed_df = self.train_df.copy()  # to reuse preprocessing pipeline
-        self.apply_log() if self.log_input.text().strip() else None
+        # Nulls, dtypes, log, standardization
+        # For simplicity, apply preprocessing on train pipeline and then scaler to test
+        if self.log_input.text().strip():
+            cols = [c.strip() for c in self.log_input.text().split(',')]
+            for c in cols:
+                df_test[c] = np.log1p(df_test[c])
         if self.std_check.isChecked():
             numeric = df_test.select_dtypes(include=np.number)
             df_test[numeric.columns] = self.scaler.transform(numeric)
