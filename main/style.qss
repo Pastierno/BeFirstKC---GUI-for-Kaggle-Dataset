@@ -1,0 +1,57 @@
+/* Gradient background for main window */
+QMainWindow {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #000000, stop:1 #2F2F2F);
+}
+
+/* TabWidget styling */
+QTabWidget::pane { border: none; background: transparent; }
+QTabBar::tab {
+    background: #3A3A3A; color: #FFFFFF;
+    padding: 8px 16px; margin-right: 2px;
+    border-top-left-radius: 4px; border-top-right-radius: 4px;
+}
+QTabBar::tab:selected { background: #595959; }
+
+/* Button styling */
+QPushButton {
+    background-color: #505050; color: #FFFFFF;
+    border: 1px solid #707070; border-radius: 4px; padding: 6px 12px;
+}
+QPushButton:hover { background-color: #606060; }
+QPushButton:pressed { background-color: #404040; }
+
+/* Input widgets */
+QComboBox, QSpinBox, QListWidget, QTableWidget, QPlainTextEdit {
+    background-color: #2E2E2E; color: #E0E0E0;
+    border: 1px solid #555555; border-radius: 4px;
+}
+QLabel { color: #E0E0E0; }
+
+/* Scrollbar styling */
+QScrollBar:vertical {
+    background: transparent; width: 12px; margin: 16px 0 16px 0;
+}
+QScrollBar::handle:vertical {
+    background: #606060; min-height: 20px; border-radius: 6px;
+}
+QScrollBar::handle:vertical:hover { background: #717171; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { background: none; }
+
+/* GroupBox styling */
+QGroupBox {
+    border: 1px solid #555555; margin-top: 6px; border-radius: 4px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin; subcontrol-position: top left;
+    padding: 0 3px; color: #CCCCCC;
+}
+
+/* ProgressDialog styling */
+QProgressBar {
+    border: 1px solid #707070; border-radius: 4px;
+    text-align: center; background: #3A3A3A; color: #E0E0E0;
+}
+QProgressBar::chunk { background-color: #505050; width: 10px; margin: 0.5px; }
+
+/* Canvas (Matplotlib) background */
+QFrame { background: transparent; }
