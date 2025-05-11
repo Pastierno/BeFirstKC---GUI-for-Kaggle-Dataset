@@ -2,12 +2,11 @@ import sys, io, pandas as pd, numpy as np, optuna, seaborn as sns, traceback, pi
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QComboBox, QScrollArea,
     QGroupBox, QLabel, QMessageBox, QListWidget, QSplitter, QSpinBox,
-    QProgressDialog, QTableWidget, QTableWidgetItem, QPlainTextEdit, QCheckBox)
+    QProgressDialog, QPlainTextEdit, QCheckBox)
 from PyQt5.QtCore import Qt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from sklearn.preprocessing import StandardScaler, PowerTransformer, LabelEncoder, OneHotEncoder
-from sklearn.compose import TransformedTargetRegressor
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import (mean_absolute_error, mean_squared_error,
     accuracy_score, precision_score, recall_score, confusion_matrix)
@@ -45,35 +44,21 @@ class DataAnalysisTool(QMainWindow):
     # --- Load Data ---
     def create_load_tab(self):
         t = QWidget(); l = QVBoxLayout()
-        # Load buttons + dataset preview selector
         h = QHBoxLayout()
         self.btn_load_train = QPushButton('Load Train Dataset')
         self.btn_load_test  = QPushButton('Load Test Dataset')
         self.btn_load_train.clicked.connect(lambda: self.load_file('train'))
         self.btn_load_test .clicked.connect(lambda: self.load_file('test'))
         h.addWidget(self.btn_load_train); h.addWidget(self.btn_load_test)
-        h.addStretch()
-        h.addWidget(QLabel('Preview:'))
-        self.combo_head_ds = QComboBox(); self.combo_head_ds.addItems(['Train','Test'])
-        self.combo_head_ds.currentIndexChanged.connect(self.update_head_view)
-        h.addWidget(self.combo_head_ds)
         l.addLayout(h)
-        # Number of rows selector
         h2 = QHBoxLayout()
         h2.addWidget(QLabel('Rows to show:'))
         self.spin_head_rows = QSpinBox(); self.spin_head_rows.setRange(1, 1000); self.spin_head_rows.setValue(5)
         self.spin_head_rows.valueChanged.connect(self.update_head_view)
         h2.addWidget(self.spin_head_rows); h2.addStretch()
         l.addLayout(h2)
-        # Table for head
-        self.table_head = QTableWidget()
-        self.table_head.setEditTriggers(QTableWidget.NoEditTriggers)
-        l.addWidget(self.table_head)
-        # Table for descriptive statistics
-        l.addWidget(QLabel('Statistics (numeric columns):'))
-        self.table_describe = QTableWidget()
-        self.table_describe.setEditTriggers(QTableWidget.NoEditTriggers)
-        l.addWidget(self.table_describe)
+        self.text_head = QPlainTextEdit(); self.text_head.setReadOnly(True)
+        l.addWidget(self.text_head)
         t.setLayout(l)
         self.tabs.addTab(t, 'Load Data')
 
@@ -86,7 +71,7 @@ class DataAnalysisTool(QMainWindow):
                 self.train_df = df.copy()
             else:
                 self.test_df       = df.copy()
-                self.submission_df = df.copy()
+                self.submission_df = df.copy()  # Salva copia intera per l'ID
             self.last_loaded = which
             self.update_all_lists()
             self.update_head_view()
@@ -96,36 +81,11 @@ class DataAnalysisTool(QMainWindow):
             traceback.print_exc()
 
     def update_head_view(self):
-        ds = self.combo_head_ds.currentText().lower()
-        df = getattr(self, f"{ds}_df")
-        if df is None:
-            self.table_head.clear()
-            self.table_describe.clear()
-            return
-        # HEAD
+        if not self.last_loaded: return
+        df = (self.train_df if self.last_loaded=='train' else self.test_df)
+        if df is None: return
         n = self.spin_head_rows.value()
-        head = df.head(n)
-        self.table_head.setRowCount(len(head)); self.table_head.setColumnCount(len(head.columns))
-        self.table_head.setHorizontalHeaderLabels(list(head.columns))
-        for i, row in enumerate(head.itertuples(index=False)):
-            for j, val in enumerate(row):
-                item = QTableWidgetItem(str(val))
-                self.table_head.setItem(i, j, item)
-        self.table_head.resizeColumnsToContents()
-        # DESCRIBE numeric only
-        desc = df.select_dtypes(include=np.number).describe()
-        if desc.empty:
-            self.table_describe.clear()
-        else:
-            self.table_describe.setRowCount(len(desc)); self.table_describe.setColumnCount(len(desc.columns))
-            self.table_describe.setHorizontalHeaderLabels(list(desc.columns))
-            self.table_describe.setVerticalHeaderLabels(list(desc.index.astype(str)))
-            for i, stat in enumerate(desc.index):
-                for j, col in enumerate(desc.columns):
-                    val = desc.at[stat, col]
-                    item = QTableWidgetItem(f"{val:.4f}")
-                    self.table_describe.setItem(i, j, item)
-            self.table_describe.resizeColumnsToContents()
+        self.text_head.setPlainText(df.head(n).to_string())
 
     # --- Preprocess Numeric ---
     def create_preprocess_tab(self):
@@ -134,6 +94,7 @@ class DataAnalysisTool(QMainWindow):
         self.combo_pp_ds = QComboBox(); self.combo_pp_ds.addItems(['Train','Test'])
         self.combo_pp_ds.currentIndexChanged.connect(self.update_pp_info)
         ds.addWidget(self.combo_pp_ds); l.addLayout(ds)
+
         sp = QSplitter(Qt.Horizontal)
         sw = QWidget(); sl = QVBoxLayout()
         sa = QPushButton('Select All'); da = QPushButton('Deselect All')
@@ -142,24 +103,29 @@ class DataAnalysisTool(QMainWindow):
         sl.addWidget(sa); sl.addWidget(da)
         self.list_pp_cols = QListWidget(); self.list_pp_cols.setSelectionMode(QListWidget.MultiSelection)
         sl.addWidget(self.list_pp_cols); sw.setLayout(sl)
+
         tg = QGroupBox('Transforms'); tl = QVBoxLayout()
         yb = QPushButton('Yeo-Johnson'); ss = QPushButton('Standard Scaling')
         yb.clicked.connect(self.apply_yeo); ss.clicked.connect(self.apply_std)
         tl.addWidget(yb); tl.addWidget(ss); tg.setLayout(tl)
+
         sp.addWidget(sw); sp.addWidget(tg)
         l.addWidget(sp)
+
         ig = QGroupBox('Info & Missing'); il = QVBoxLayout()
         self.text_info = QPlainTextEdit(); self.text_info.setReadOnly(True)
         self.text_nan  = QPlainTextEdit(); self.text_nan.setReadOnly(True)
         il.addWidget(QLabel('Info:'));    il.addWidget(self.text_info)
         il.addWidget(QLabel('Missing:')); il.addWidget(self.text_nan)
         ig.setLayout(il); l.addWidget(ig)
+
         hb = QHBoxLayout()
         dn = QPushButton('Drop NaN'); dn.clicked.connect(self.pp_dropna)
         im = QComboBox(); im.addItems(['Mean','Median','Mode'])
         ib = QPushButton('Impute Numeric'); ib.clicked.connect(self.pp_impute)
         hb.addWidget(dn); hb.addWidget(im); hb.addWidget(ib)
         self.combo_imp = im; l.addLayout(hb)
+
         t.setLayout(l); self.tabs.addTab(t,'Preprocess')
 
     def update_pp_info(self):
@@ -172,38 +138,42 @@ class DataAnalysisTool(QMainWindow):
         self.text_nan.setPlainText('\n'.join(f'{c}: {n}' for c,n in df.isna().sum().items()))
 
     def apply_yeo(self):
-        df = self.get_pp_df(); cols = [i.text() for i in self.list_pp_cols.selectedItems()]
+        df = self.train_df if self.combo_pp_ds.currentText()=='Train' else self.test_df
+        cols = [i.text() for i in self.list_pp_cols.selectedItems()]
         if df is None or not cols: return
         pt = PowerTransformer(method='yeo-johnson', standardize=True)
-        try: df[cols] = pt.fit_transform(df[cols])
-        except Exception as e: QMessageBox.warning(self,'Transform Error',str(e))
+        try:
+            df[cols] = pt.fit_transform(df[cols])
+        except Exception as e:
+            QMessageBox.warning(self, 'Transform Error', str(e))
         self.update_pp_info(); self.update_viz()
 
     def apply_std(self):
-        df = self.get_pp_df(); cols = [i.text() for i in self.list_pp_cols.selectedItems()]
+        df = self.train_df if self.combo_pp_ds.currentText()=='Train' else self.test_df
+        cols = [i.text() for i in self.list_pp_cols.selectedItems()]
         if df is None or not cols: return
         sc = StandardScaler()
-        try: df[cols] = sc.fit_transform(df[cols])
-        except Exception as e: QMessageBox.warning(self,'Transform Error',str(e))
+        try:
+            df[cols] = sc.fit_transform(df[cols])
+        except Exception as e:
+            QMessageBox.warning(self, 'Transform Error', str(e))
         self.update_pp_info(); self.update_viz()
 
     def pp_dropna(self):
-        df = self.get_pp_df()
+        df = self.train_df if self.combo_pp_ds.currentText()=='Train' else self.test_df
         if df is not None:
             df.dropna(inplace=True)
             self.update_pp_info()
 
     def pp_impute(self):
-        df = self.get_pp_df(); m = self.combo_imp.currentText()
+        df = self.train_df if self.combo_pp_ds.currentText()=='Train' else self.test_df
+        m = self.combo_imp.currentText()
         if df is None: return
         for c in df.select_dtypes(include=np.number).columns:
-            if m=='Mean':    df[c].fillna(df[c].mean(), inplace=True)
-            elif m=='Median':df[c].fillna(df[c].median(), inplace=True)
+            if m=='Mean':   df[c].fillna(df[c].mean(), inplace=True)
+            elif m=='Median': df[c].fillna(df[c].median(), inplace=True)
             else:            df[c].fillna(df[c].mode()[0], inplace=True)
         self.update_pp_info()
-
-    def get_pp_df(self):
-        return self.train_df if self.combo_pp_ds.currentText()=='Train' else self.test_df
 
     # --- Categorical Impute ---
     def create_cat_impute_tab(self):
@@ -212,15 +182,20 @@ class DataAnalysisTool(QMainWindow):
         self.combo_cat_imp_ds = QComboBox(); self.combo_cat_imp_ds.addItems(['Train','Test'])
         self.combo_cat_imp_ds.currentIndexChanged.connect(self.update_cat_imp)
         ds.addWidget(self.combo_cat_imp_ds); l.addLayout(ds)
+
         hb = QHBoxLayout()
         sa = QPushButton('Select All'); da = QPushButton('Deselect All')
         sa.clicked.connect(lambda: self.list_cat_imp_cols.selectAll())
         da.clicked.connect(lambda: self.list_cat_imp_cols.clearSelection())
         hb.addWidget(sa); hb.addWidget(da); l.addLayout(hb)
+
         self.list_cat_imp_cols = QListWidget(); self.list_cat_imp_cols.setSelectionMode(QListWidget.MultiSelection)
         l.addWidget(QLabel('Categorical Columns:')); l.addWidget(self.list_cat_imp_cols)
+
         btn = QPushButton('Impute Mode'); btn.clicked.connect(self.apply_cat_impute)
-        l.addWidget(btn); t.setLayout(l); self.tabs.addTab(t,'Impute Cat')
+        l.addWidget(btn)
+        t.setLayout(l)
+        self.tabs.addTab(t,'Impute Cat')
 
     def update_cat_imp(self):
         df = self.train_df if self.combo_cat_imp_ds.currentText()=='Train' else self.test_df
@@ -245,17 +220,23 @@ class DataAnalysisTool(QMainWindow):
         self.combo_enc_ds = QComboBox(); self.combo_enc_ds.addItems(['Train','Test'])
         self.combo_enc_ds.currentIndexChanged.connect(self.update_enc)
         l.addWidget(self.combo_enc_ds)
+
         hb = QHBoxLayout()
         sa = QPushButton('Select All'); da = QPushButton('Deselect All')
         sa.clicked.connect(lambda: self.list_enc.selectAll()); da.clicked.connect(lambda: self.list_enc.clearSelection())
         hb.addWidget(sa); hb.addWidget(da); l.addLayout(hb)
+
         self.list_enc = QListWidget(); self.list_enc.setSelectionMode(QListWidget.MultiSelection)
         l.addWidget(QLabel('Categorical Columns:')); l.addWidget(self.list_enc)
+
         self.cb_label  = QCheckBox('Label Encoding')
         self.cb_onehot = QCheckBox('OneHot Encoding')
         l.addWidget(self.cb_label); l.addWidget(self.cb_onehot)
+
         btn = QPushButton('Apply Encoding'); btn.clicked.connect(self.apply_enc)
-        l.addWidget(btn); t.setLayout(l); self.tabs.addTab(t,'Encode')
+        l.addWidget(btn)
+        t.setLayout(l)
+        self.tabs.addTab(t,'Encode')
 
     def update_enc(self):
         df = self.train_df if self.combo_enc_ds.currentText()=='Train' else self.test_df
@@ -278,8 +259,10 @@ class DataAnalysisTool(QMainWindow):
             df_ohe = pd.DataFrame(arr, columns=new_cols, index=df.index)
             df.drop(columns=cols, inplace=True)
             df = pd.concat([df.reset_index(drop=True), df_ohe.reset_index(drop=True)], axis=1)
-            if self.combo_enc_ds.currentText()=='Train': self.train_df = df
-            else: self.test_df = df
+            if self.combo_enc_ds.currentText()=='Train':
+                self.train_df = df
+            else:
+                self.test_df = df
         QMessageBox.information(self, 'Encode', 'Applied')
         self.update_enc(); self.update_pp_info(); self.update_all_lists()
 
@@ -292,6 +275,7 @@ class DataAnalysisTool(QMainWindow):
         c.addWidget(QLabel('Type:'))
         self.combo_viz_type = QComboBox(); self.combo_viz_type.addItems(['Histogram','Boxplot','Correlation'])
         c.addWidget(self.combo_viz_type); c.addStretch(); l.addLayout(c)
+
         sp = QSplitter(Qt.Horizontal)
         sw = QWidget(); sl = QVBoxLayout()
         sa = QPushButton('Select All'); da = QPushButton('Deselect All')
@@ -300,6 +284,7 @@ class DataAnalysisTool(QMainWindow):
         self.list_viz_cols = QListWidget(); self.list_viz_cols.setSelectionMode(QListWidget.MultiSelection)
         self.list_viz_cols.itemSelectionChanged.connect(self.plot_viz)
         sl.addWidget(self.list_viz_cols); sw.setLayout(sl); sp.addWidget(sw)
+
         self.figure = Figure(figsize=self.current_figsize); self.canvas = FigureCanvas(self.figure)
         scr = QScrollArea(); scr.setWidget(self.canvas); scr.setWidgetResizable(True); sp.addWidget(scr)
         sp.setSizes([200,800]); l.addWidget(sp); t.setLayout(l); self.tabs.addTab(t,'Visualize')
@@ -341,21 +326,25 @@ class DataAnalysisTool(QMainWindow):
         hb.addWidget(sa); hb.addWidget(da); l.addLayout(hb)
         self.list_model_drop = QListWidget(); self.list_model_drop.setSelectionMode(QListWidget.MultiSelection)
         l.addWidget(self.list_model_drop)
+
         db = QPushButton('Drop'); db.clicked.connect(self.model_drop); l.addWidget(db)
         l.addWidget(QLabel('Target:')); self.combo_target = QComboBox(); l.addWidget(self.combo_target)
         l.addWidget(QLabel('Model:'));  self.combo_model  = QComboBox()
         self.combo_model.addItems(['XGBoost Classifier','XGBoost Regressor','LightGBM Classifier','LightGBM Regressor'])
         l.addWidget(self.combo_model)
+
         tb = QPushButton('Train'); tb.clicked.connect(self.train_model); l.addWidget(tb)
         hb2 = QHBoxLayout(); hb2.addWidget(QLabel('Trials:'))
         self.spin_trials = QSpinBox(); self.spin_trials.setRange(1,500); self.spin_trials.setValue(50)
         hb2.addWidget(self.spin_trials)
         op = QPushButton('Optimize'); op.clicked.connect(self.optimize_model); hb2.addWidget(op)
         l.addLayout(hb2)
+
         self.btn_train_best = QPushButton('Train Best Params'); self.btn_train_best.setEnabled(False)
         self.btn_train_best.clicked.connect(self.train_best); l.addWidget(self.btn_train_best)
         self.btn_save_model  = QPushButton('Save Model');        self.btn_save_model.setEnabled(False)
         self.btn_save_model.clicked.connect(self.save_model);    l.addWidget(self.btn_save_model)
+
         self.text_model_res = QPlainTextEdit(); self.text_model_res.setReadOnly(True); l.addWidget(self.text_model_res)
         t.setLayout(l); self.tabs.addTab(t,'Model')
 
@@ -391,19 +380,19 @@ class DataAnalysisTool(QMainWindow):
         if is_clf:
             self.target_encoder = LabelEncoder()
             y = self.target_encoder.fit_transform(y.astype(str))
-            base_model = XGBClassifier(eval_metric='mlogloss') if 'XGBoost' in self.combo_model.currentText() else LGBMClassifier()
-            self.model = base_model
-        else:
-            base_model = XGBRegressor() if 'XGBoost' in self.combo_model.currentText() else LGBMRegressor()
-            self.model = TransformedTargetRegressor(regressor=base_model, transformer=StandardScaler())
         self.feature_cols = X.columns.tolist()
         Xtr, Xv, ytr, yv = train_test_split(X, y, test_size=0.2, random_state=42)
+        mname = self.combo_model.currentText()
+        if 'XGBoost' in mname:
+            self.model = XGBClassifier(eval_metric='mlogloss') if is_clf else XGBRegressor()
+        else:
+            self.model = LGBMClassifier() if is_clf else LGBMRegressor()
         dlg = QProgressDialog('Training...', None, 0, 0, self)
         dlg.setWindowModality(Qt.WindowModal); dlg.show(); QApplication.processEvents()
         try:
             self.model.fit(Xtr, ytr); dlg.reset()
             yt = self.model.predict(Xtr); yv_pred = self.model.predict(Xv)
-            s = f"Model: {self.combo_model.currentText()}\n"
+            s = f'Model: {mname}\n'
             if is_clf:
                 s += (
                     f"Train acc: {accuracy_score(ytr, yt):.4f}\n"
@@ -437,11 +426,12 @@ class DataAnalysisTool(QMainWindow):
         if tgt not in df.columns:
             QMessageBox.warning(self,'Model','Select target'); return
         X = df.drop(columns=[tgt]).select_dtypes(include=np.number); y = df[tgt]
-        if 'Classifier' in self.combo_model.currentText() and self.target_encoder:
+        is_clf = 'Classifier' in self.combo_model.currentText()
+        if is_clf and self.target_encoder:
             y = self.target_encoder.transform(y.astype(str))
         self.feature_cols = X.columns.tolist()
         Xtr, _, ytr, _ = train_test_split(X, y, test_size=0.2, random_state=42)
-        trials = self.spin_trials.value(); mname = self.combo_model.currentText()
+        trials = self.spin_trials.value();  mname = self.combo_model.currentText()
         progress = QProgressDialog('Optuna...', 'Cancel', 0, trials, self)
         progress.setWindowModality(Qt.WindowModal); progress.show()
         def obj(trial):
@@ -453,10 +443,14 @@ class DataAnalysisTool(QMainWindow):
                 'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0)
             }
             if 'XGBoost' in mname:
-                model = XGBClassifier(**params, eval_metric='mlogloss') if 'Classifier' in mname else XGBRegressor(**params)
+                model = XGBClassifier(**params, eval_metric='mlogloss') if is_clf else XGBRegressor(**params)
             else:
-                model = LGBMClassifier(**params) if 'Classifier' in mname else LGBMRegressor(**params)
-            return cross_val_score(model, Xtr, ytr, cv=3).mean()
+                model = LGBMClassifier(**params) if is_clf else LGBMRegressor(**params)
+            score = cross_val_score(model, Xtr, ytr, cv=3).mean()
+            v = trial.number + 1; progress.setValue(v); QApplication.processEvents()
+            if progress.wasCanceled(): raise optuna.exceptions.TrialPruned()
+            return score
+
         study = optuna.create_study(direction='maximize')
         study.optimize(obj, n_trials=trials)
         progress.reset()
@@ -466,13 +460,13 @@ class DataAnalysisTool(QMainWindow):
 
     def train_best(self):
         if self.train_df is None or not self.best_params: return
-        is_clf = 'Classifier' in self.combo_model.currentText()
+        mname = self.combo_model.currentText(); is_clf = 'Classifier' in mname
         params = self.best_params
-        if is_clf:
-            model = XGBClassifier(**params, eval_metric='mlogloss') if 'XGBoost' in self.combo_model.currentText() else LGBMClassifier(**params)
+        if 'XGBoost' in mname:
+            model = XGBClassifier(**params, eval_metric='mlogloss') if is_clf else XGBRegressor(**params)
         else:
-            base = XGBRegressor(**params) if 'XGBoost' in self.combo_model.currentText() else LGBMRegressor(**params)
-            model = TransformedTargetRegressor(regressor=base, transformer=StandardScaler())
+            model = LGBMClassifier(**params) if is_clf else LGBMRegressor(**params)
+
         df  = self.train_df.copy(); tgt = self.combo_target.currentText()
         X   = df[self.feature_cols]; y = df[tgt]
         if is_clf:
@@ -483,7 +477,7 @@ class DataAnalysisTool(QMainWindow):
         try:
             model.fit(Xtr, ytr); dlg.reset()
             yt = model.predict(Xtr); yv_pred = model.predict(Xv)
-            s = f"Model (best params): {self.combo_model.currentText()}\nBest params: {params}\n"
+            s = f"Model (best params): {mname}\nBest params: {params}\n"
             if is_clf:
                 s += (
                     f"Train acc: {accuracy_score(ytr, yt):.4f}\n"
@@ -535,19 +529,26 @@ class DataAnalysisTool(QMainWindow):
     def generate_submission(self):
         if not self.model or self.test_df is None:
             QMessageBox.warning(self,'Submission','Train model and load test data first'); return
+
         idc   = self.combo_id.currentText()
         df    = self.test_df.copy()
         subdf = self.submission_df.copy()
+
         if idc not in subdf.columns:
             QMessageBox.warning(self,'Submission','Invalid ID column'); return
+
         missing = [c for c in self.feature_cols if c not in df.columns]
         if missing:
             QMessageBox.warning(self,'Submission',f'Missing columns in test: {missing}'); return
+
         X     = df[self.feature_cols]
         preds = self.model.predict(X)
         if self.target_encoder:
-            try: preds = self.target_encoder.inverse_transform(preds)
-            except: pass
+            try:
+                preds = self.target_encoder.inverse_transform(preds)
+            except:
+                pass
+
         sub = pd.DataFrame({ idc: subdf[idc], 'prediction': preds })
         fn, _ = QFileDialog.getSaveFileName(self,'Save Submission','submission.csv','CSV Files (*.csv)')
         if fn:
