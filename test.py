@@ -1,4 +1,4 @@
-import sys, io, pandas as pd, numpy as np, optuna, seaborn as sns, traceback, pickle
+import sys, io, pandas as pd, numpy as np, optuna, seaborn as sns, traceback, pickle, random
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QWidget,
     QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QComboBox, QScrollArea,
@@ -32,7 +32,7 @@ class DataAnalysisTool(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle('Data Analysis Tool')
+        self.setWindowTitle('BeKC-Easy')
         self.setGeometry(100, 100, 1300, 900)
         self.tabs = QTabWidget()
         self.create_load_tab()
@@ -43,7 +43,19 @@ class DataAnalysisTool(QMainWindow):
         self.create_model_tab()
         self.create_submission_tab()
         self.setCentralWidget(self.tabs)
+
+        # Disabilito tutte le tab finché non scelgo il target
+        for i in range(self.tabs.count()):
+            if self.tabs.tabText(i) not in ['Load Data', 'Model']:
+                self.tabs.setTabEnabled(i, False)
+        self.combo_target.currentIndexChanged.connect(self.check_enable_tabs)
+
         self.show()
+
+    def check_enable_tabs(self, idx):
+        if idx > 0:  # >0 significa che ho selezionato un target reale
+            for i in range(self.tabs.count()):
+                self.tabs.setTabEnabled(i, True)
 
     # --- Load Data ---
     def create_load_tab(self):
@@ -130,7 +142,7 @@ class DataAnalysisTool(QMainWindow):
     def create_preprocess_tab(self):
         t = QWidget(); l = QVBoxLayout()
         ds = QHBoxLayout(); ds.addWidget(QLabel('Dataset:'))
-        self.combo_pp_ds = QComboBox(); self.combo_pp_ds.addItems(['Train','Test'])
+        self.combo_pp_ds = QComboBox(); self.combo_pp_ds.addItems(['Train','Test','Both'])
         self.combo_pp_ds.currentIndexChanged.connect(self.update_pp_info)
         ds.addWidget(self.combo_pp_ds); l.addLayout(ds)
 
@@ -167,55 +179,115 @@ class DataAnalysisTool(QMainWindow):
         t.setLayout(l); self.tabs.addTab(t,'Preprocess')
 
     def update_pp_info(self):
-        df = self.train_df if self.combo_pp_ds.currentText()=='Train' else self.test_df
-        self.list_pp_cols.clear()
-        if df is None:
-            self.text_info.clear(); self.text_nan.clear(); return
-        numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+        ds = self.combo_pp_ds.currentText()
+        # seleziono df per info, ma elenco colonne in base a "Both" o singolo
+        if ds == 'Train':
+            df = self.train_df
+            numeric_cols = list(df.select_dtypes(include=np.number).columns) if df is not None else []
+        elif ds == 'Test':
+            df = self.test_df
+            numeric_cols = list(df.select_dtypes(include=np.number).columns) if df is not None else []
+        else:  # Both: interseco
+            if self.train_df is None or self.test_df is None:
+                self.list_pp_cols.clear(); self.text_info.clear(); self.text_nan.clear(); return
+            df = self.train_df
+            cols_train = set(self.train_df.select_dtypes(include=np.number).columns)
+            cols_test  = set(self.test_df.select_dtypes(include=np.number).columns)
+            numeric_cols = sorted(cols_train & cols_test)
+
+        # tolgo il target
         tgt = self.combo_target.currentText()
-        if tgt in numeric_cols: numeric_cols.remove(tgt)
+        if tgt in numeric_cols:
+            numeric_cols.remove(tgt)
+
+        self.list_pp_cols.clear()
         self.list_pp_cols.addItems(numeric_cols)
-        buf = io.StringIO(); df.info(buf=buf)
-        self.text_info.setPlainText(buf.getvalue())
-        self.text_nan.setPlainText('\n'.join(f'{c}: {n}' for c,n in df.isna().sum().items()))
+
+        # Info & Missing basate su train
+        if self.train_df is not None:
+            buf = io.StringIO(); self.train_df.info(buf=buf)
+            self.text_info.setPlainText(buf.getvalue())
+            self.text_nan.setPlainText('\n'.join(f'{c}: {n}' for c,n in self.train_df.isna().sum().items()))
+        else:
+            self.text_info.clear(); self.text_nan.clear()
 
     def apply_yeo(self):
-        df = self.get_pp_df(); tgt = self.combo_target.currentText()
+        ds = self.combo_pp_ds.currentText()
         sel = [i.text() for i in self.list_pp_cols.selectedItems()]
-        cols = [c for c in sel if c != tgt]
-        if df is None or not cols:
-            QMessageBox.warning(self,'Transform Error','No valid columns selected (target escluso)')
-            return
-        pt = PowerTransformer(method='yeo-johnson', standardize=True)
-        try: df[cols] = pt.fit_transform(df[cols])
-        except Exception as e: QMessageBox.warning(self,'Transform Error',str(e))
+        cols = [c for c in sel if c != self.combo_target.currentText()]
+        if not cols:
+            QMessageBox.warning(self,'Transform Error','Nessuna colonna valida selezionata'); return
+
+        if ds == 'Both':
+            # sull'insieme di colonne comuni
+            if self.train_df is not None:
+                pt1 = PowerTransformer(method='yeo-johnson', standardize=True)
+                self.train_df[cols] = pt1.fit_transform(self.train_df[cols])
+            if self.test_df is not None:
+                # prendo solo quelle presenti davvero
+                cols_t = [c for c in cols if c in self.test_df.columns]
+                pt2 = PowerTransformer(method='yeo-johnson', standardize=True)
+                self.test_df[cols_t] = pt2.fit_transform(self.test_df[cols_t])
+        else:
+            df = self.get_pp_df()
+            pt = PowerTransformer(method='yeo-johnson', standardize=True)
+            df[cols] = pt.fit_transform(df[cols])
+
         self.update_pp_info(); self.update_viz()
 
     def apply_std(self):
-        df = self.get_pp_df(); tgt = self.combo_target.currentText()
+        ds = self.combo_pp_ds.currentText()
         sel = [i.text() for i in self.list_pp_cols.selectedItems()]
-        cols = [c for c in sel if c != tgt]
-        if df is None or not cols:
-            QMessageBox.warning(self,'Transform Error','No valid columns selected (target escluso)')
-            return
-        sc = StandardScaler()
-        try: df[cols] = sc.fit_transform(df[cols])
-        except Exception as e: QMessageBox.warning(self,'Transform Error',str(e))
+        cols = [c for c in sel if c != self.combo_target.currentText()]
+        if not cols:
+            QMessageBox.warning(self,'Transform Error','Nessuna colonna valida selezionata'); return
+
+        if ds == 'Both':
+            if self.train_df is not None:
+                sc1 = StandardScaler()
+                self.train_df[cols] = sc1.fit_transform(self.train_df[cols])
+            if self.test_df is not None:
+                cols_t = [c for c in cols if c in self.test_df.columns]
+                sc2 = StandardScaler()
+                self.test_df[cols_t] = sc2.fit_transform(self.test_df[cols_t])
+        else:
+            df = self.get_pp_df()
+            sc = StandardScaler()
+            df[cols] = sc.fit_transform(df[cols])
+
         self.update_pp_info(); self.update_viz()
 
     def pp_dropna(self):
-        df = self.get_pp_df()
-        if df is not None:
-            df.dropna(inplace=True)
-            self.update_pp_info()
+        ds = self.combo_pp_ds.currentText()
+        if ds == 'Both':
+            if self.train_df is not None: self.train_df.dropna(inplace=True)
+            if self.test_df is not None:  self.test_df.dropna(inplace=True)
+        else:
+            df = self.get_pp_df()
+            if df is not None: df.dropna(inplace=True)
+        self.update_pp_info()
 
     def pp_impute(self):
-        df = self.get_pp_df(); m = self.combo_imp.currentText()
-        if df is None: return
-        for c in df.select_dtypes(include=np.number).columns:
-            if m=='Mean':    df[c].fillna(df[c].mean(), inplace=True)
-            elif m=='Median':df[c].fillna(df[c].median(), inplace=True)
-            else:            df[c].fillna(df[c].mode()[0], inplace=True)
+        ds = self.combo_pp_ds.currentText()
+        m = self.combo_imp.currentText()
+        targets = []
+        if ds in ['Train','Both']:
+            targets.append(self.train_df)
+        if ds in ['Test','Both']:
+            targets.append(self.test_df)
+
+        for df in targets:
+            if df is None: continue
+            for c in df.select_dtypes(include=np.number).columns:
+                if c == self.combo_target.currentText():
+                    continue
+                if m == 'Mean':
+                    df[c] = df[c].fillna(df[c].mean())
+                elif m == 'Median':
+                    df[c] = df[c].fillna(df[c].median())
+                else:
+                    df[c] = df[c].fillna(df[c].mode()[0])
+
         self.update_pp_info()
 
     def get_pp_df(self):
@@ -225,9 +297,17 @@ class DataAnalysisTool(QMainWindow):
     def create_cat_impute_tab(self):
         t = QWidget(); l = QVBoxLayout()
         ds = QHBoxLayout(); ds.addWidget(QLabel('Dataset:'))
-        self.combo_cat_imp_ds = QComboBox(); self.combo_cat_imp_ds.addItems(['Train','Test'])
+        self.combo_cat_imp_ds = QComboBox(); self.combo_cat_imp_ds.addItems(['Train','Test','Both'])
         self.combo_cat_imp_ds.currentIndexChanged.connect(self.update_cat_imp)
         ds.addWidget(self.combo_cat_imp_ds); l.addLayout(ds)
+
+        # strategy selection
+        h2 = QHBoxLayout()
+        h2.addWidget(QLabel('Strategy:'))
+        self.combo_cat_imp_strategy = QComboBox()
+        self.combo_cat_imp_strategy.addItems(['Mode','Constant','Random'])
+        h2.addWidget(self.combo_cat_imp_strategy)
+        l.addLayout(h2)
 
         hb = QHBoxLayout()
         sa = QPushButton('Select All'); da = QPushButton('Deselect All')
@@ -238,31 +318,59 @@ class DataAnalysisTool(QMainWindow):
         self.list_cat_imp_cols = QListWidget(); self.list_cat_imp_cols.setSelectionMode(QListWidget.MultiSelection)
         l.addWidget(QLabel('Categorical Columns:')); l.addWidget(self.list_cat_imp_cols)
 
-        btn = QPushButton('Impute Mode'); btn.clicked.connect(self.apply_cat_impute)
+        btn = QPushButton('Impute'); btn.clicked.connect(self.apply_cat_impute)
         l.addWidget(btn)
 
         t.setLayout(l); self.tabs.addTab(t,'Impute Cat')
 
     def update_cat_imp(self):
-        df = self.train_df if self.combo_cat_imp_ds.currentText()=='Train' else self.test_df
+        ds = self.combo_cat_imp_ds.currentText()
         self.list_cat_imp_cols.clear()
-        if df is not None:
-            self.list_cat_imp_cols.addItems(df.select_dtypes(exclude=np.number).columns)
+        cols = []
+        if ds == 'Train':
+            if self.train_df is not None:
+                cols = self.train_df.select_dtypes(exclude=np.number).columns.tolist()
+        elif ds == 'Test':
+            if self.test_df is not None:
+                cols = self.test_df.select_dtypes(exclude=np.number).columns.tolist()
+        else:  # Both
+            if self.train_df is not None:
+                cols += self.train_df.select_dtypes(exclude=np.number).columns.tolist()
+            if self.test_df is not None:
+                cols += self.test_df.select_dtypes(exclude=np.number).columns.tolist()
+            # keep unique, preserve order
+            cols = list(dict.fromkeys(cols))
+        self.list_cat_imp_cols.addItems(cols)
 
     def apply_cat_impute(self):
-        df = self.train_df if self.combo_cat_imp_ds.currentText()=='Train' else self.test_df
+        strategy = self.combo_cat_imp_strategy.currentText()
         cols = [i.text() for i in self.list_cat_imp_cols.selectedItems()]
-        if df is None or not cols:
+        if not cols:
             QMessageBox.warning(self,'Impute Cat','No columns selected'); return
-        for c in cols: df[c].fillna(df[c].mode()[0], inplace=True)
-        QMessageBox.information(self,'Impute Cat',f'Mode imputed: {cols}')
+        ds = self.combo_cat_imp_ds.currentText()
+        targets = []
+        if ds in ['Train','Both']:
+            targets.append(self.train_df)
+        if ds in ['Test','Both']:
+            targets.append(self.test_df)
+        for df in targets:
+            if df is None: continue
+            for c in cols:
+                if strategy == 'Mode':
+                    df[c].fillna(df[c].mode()[0], inplace=True)
+                elif strategy == 'Constant':
+                    df[c].fillna('missing', inplace=True)
+                else:  # Random
+                    vals = df[c].dropna().tolist()
+                    df[c] = df[c].apply(lambda x: random.choice(vals) if pd.isna(x) and vals else x)
+        QMessageBox.information(self,'Impute Cat',f'Imputed {cols} using {strategy}')
         self.update_pp_info(); self.update_enc(); self.update_viz(); self.update_all_lists()
 
     # --- Encode ---
     def create_encode_tab(self):
         t = QWidget(); l = QVBoxLayout()
         l.addWidget(QLabel('Dataset:'))
-        self.combo_enc_ds = QComboBox(); self.combo_enc_ds.addItems(['Train','Test'])
+        self.combo_enc_ds = QComboBox(); self.combo_enc_ds.addItems(['Train','Test','Both'])
         self.combo_enc_ds.currentIndexChanged.connect(self.update_enc)
         l.addWidget(self.combo_enc_ds)
 
@@ -284,29 +392,52 @@ class DataAnalysisTool(QMainWindow):
         t.setLayout(l); self.tabs.addTab(t,'Encode')
 
     def update_enc(self):
-        df = self.train_df if self.combo_enc_ds.currentText()=='Train' else self.test_df
+        ds = self.combo_enc_ds.currentText()
         self.list_enc.clear()
-        if df is not None:
-            self.list_enc.addItems(df.select_dtypes(exclude=np.number).columns)
+        cols = []
+        if ds == 'Train':
+            if self.train_df is not None:
+                cols = self.train_df.select_dtypes(exclude=np.number).columns.tolist()
+        elif ds == 'Test':
+            if self.test_df is not None:
+                cols = self.test_df.select_dtypes(exclude=np.number).columns.tolist()
+        else:  # Both
+            if self.train_df is not None:
+                cols += self.train_df.select_dtypes(exclude=np.number).columns.tolist()
+            if self.test_df is not None:
+                cols += self.test_df.select_dtypes(exclude=np.number).columns.tolist()
+            cols = list(dict.fromkeys(cols))
+        self.list_enc.addItems(cols)
 
     def apply_enc(self):
-        df = self.train_df if self.combo_enc_ds.currentText()=='Train' else self.test_df
         cols = [i.text() for i in self.list_enc.selectedItems()]
-        if df is None or not cols:
+        if not cols:
             QMessageBox.warning(self,'Encode','No columns selected'); return
-        if self.cb_label.isChecked():
-            le = LabelEncoder()
-            for c in cols: df[c] = le.fit_transform(df[c].astype(str))
-        if self.cb_onehot.isChecked():
-            ohe = OneHotEncoder(sparse_output=False, drop='first')
-            arr = ohe.fit_transform(df[cols].astype(str))
-            new_cols = ohe.get_feature_names_out(cols)
-            df_ohe = pd.DataFrame(arr, columns=new_cols, index=df.index)
-            df.drop(columns=cols, inplace=True)
-            df = pd.concat([df.reset_index(drop=True), df_ohe.reset_index(drop=True)], axis=1)
-            if self.combo_enc_ds.currentText()=='Train': self.train_df = df
-            else: self.test_df = df
-        QMessageBox.information(self,'Encode','Applied')
+        ds = self.combo_enc_ds.currentText()
+        datasets = []
+        if ds in ['Train','Both']:
+            datasets.append(('train', self.train_df))
+        if ds in ['Test','Both']:
+            datasets.append(('test', self.test_df))
+        for name, df in datasets:
+            if df is None: continue
+            if self.cb_label.isChecked():
+                le = LabelEncoder()
+                for c in cols:
+                    if c in df.columns:
+                        df[c] = le.fit_transform(df[c].astype(str))
+            if self.cb_onehot.isChecked():
+                ohe = OneHotEncoder(sparse_output=False, drop='first')
+                exist = [c for c in cols if c in df.columns]
+                if exist:
+                    arr = ohe.fit_transform(df[exist].astype(str))
+                    new_cols = ohe.get_feature_names_out(exist)
+                    df_ohe = pd.DataFrame(arr, columns=new_cols, index=df.index)
+                    df.drop(columns=exist, inplace=True)
+                    df.reset_index(drop=True, inplace=True)
+                    df = pd.concat([df, df_ohe.reset_index(drop=True)], axis=1)
+                    setattr(self, f"{name}_df", df)
+        QMessageBox.information(self,'Encode','Applied encoding')
         self.update_enc(); self.update_pp_info(); self.update_all_lists()
 
     # --- Visualize ---
@@ -398,7 +529,10 @@ class DataAnalysisTool(QMainWindow):
         cols = list(self.train_df.columns) if self.train_df is not None else []
         for w in [self.list_pp_cols, self.list_model_drop]:
             w.clear(); w.addItems(cols)
-        self.combo_target.clear(); self.combo_target.addItems(cols)
+        # placeholder + target list
+        self.combo_target.clear()
+        self.combo_target.addItem('Select Target')
+        self.combo_target.addItems(cols)
         ids = list(self.submission_df.columns) if self.submission_df is not None else cols
         self.combo_id.clear(); self.combo_id.addItems(ids)
         self.update_pp_info(); self.update_enc(); self.update_viz()
@@ -418,8 +552,8 @@ class DataAnalysisTool(QMainWindow):
         if self.train_df is None:
             QMessageBox.warning(self,'Model','Load train data first'); return
         df = self.train_df.copy(); tgt = self.combo_target.currentText()
-        if tgt not in df.columns:
-            QMessageBox.warning(self,'Model','Select target'); return
+        if tgt == 'Select Target' or tgt not in df.columns:
+            QMessageBox.warning(self,'Model','Select a valid target'); return
         X = df.drop(columns=[tgt]).select_dtypes(include=np.number); y = df[tgt]
         is_clf = 'Classifier' in self.combo_model.currentText()
         if is_clf:
@@ -446,9 +580,13 @@ class DataAnalysisTool(QMainWindow):
                     f"CM:\n{confusion_matrix(yv, yv_pred)}\n"
                 )
             else:
-                r2t, mae, mse = self.model.score(Xtr, ytr), mean_absolute_error(yv, yv_pred), mean_squared_error(yv, yv_pred)
+                mae = mean_absolute_error(yv, yv_pred); mse = mean_squared_error(yv, yv_pred)
                 rmse = np.sqrt(mse)
-                s += f"Train R2: {r2t:.4f}\nVal R2: {self.model.score(Xv, yv_pred):.4f}\nMAE: {mae:.4f}\nMSE: {mse:.4f}\nRMSE: {rmse:.4f}\n"
+                s += (
+                    f"Train R2: {self.model.score(Xtr, ytr):.4f}\n"
+                    f"Val R2: {self.model.score(Xv, yv_pred):.4f}\n"
+                    f"MAE: {mae:.4f}\nMSE: {mse:.4f}\nRMSE: {rmse:.4f}\n"
+                )
             cv = cross_val_score(self.model, Xtr, ytr, cv=5)
             s += f"CV mean: {cv.mean():.4f} (std {cv.std():.4f})"
             self.text_model_res.setPlainText(s)
@@ -460,8 +598,8 @@ class DataAnalysisTool(QMainWindow):
         if self.train_df is None:
             QMessageBox.warning(self,'Model','Load train data first'); return
         df = self.train_df.copy(); tgt = self.combo_target.currentText()
-        if tgt not in df.columns:
-            QMessageBox.warning(self,'Model','Select target'); return
+        if tgt == 'Select Target' or tgt not in df.columns:
+            QMessageBox.warning(self,'Model','Select a valid target'); return
         X = df.drop(columns=[tgt]).select_dtypes(include=np.number); y = df[tgt]
         if 'Classifier' in self.combo_model.currentText() and self.target_encoder:
             y = self.target_encoder.transform(y.astype(str))
@@ -519,9 +657,13 @@ class DataAnalysisTool(QMainWindow):
                     f"CM:\n{confusion_matrix(yv, yv_pred)}\n"
                 )
             else:
-                r2t, mae, mse = self.model.score(Xtr, ytr), mean_absolute_error(yv, yv_pred), mean_squared_error(yv, yv_pred)
+                mae = mean_absolute_error(yv, yv_pred); mse = mean_squared_error(yv, yv_pred)
                 rmse = np.sqrt(mse)
-                s += f"Train R2: {r2t:.4f}\nVal R2: {self.model.score(Xv, yv_pred):.4f}\nMAE: {mae:.4f}\nMSE: {mse:.4f}\nRMSE: {rmse:.4f}\n"
+                s += (
+                    f"Train R2: {self.model.score(Xtr, ytr):.4f}\n"
+                    f"Val R2: {self.model.score(Xv, yv_pred):.4f}\n"
+                    f"MAE: {mae:.4f}\nMSE: {mse:.4f}\nRMSE: {rmse:.4f}\n"
+                )
             cv = cross_val_score(self.model, Xtr, ytr, cv=5)
             s += f"CV mean: {cv.mean():.4f} (std {cv.std():.4f})"
             self.text_model_res.setPlainText(s)
@@ -573,6 +715,20 @@ class DataAnalysisTool(QMainWindow):
                 QMessageBox.information(self,'Submission',f'Saved {fn}')
             except Exception as e:
                 QMessageBox.critical(self,'Submission Error',str(e))
+
+    def update_all_lists(self):
+            cols = list(self.train_df.columns) if self.train_df is not None else []
+            for w in [self.list_pp_cols, self.list_model_drop]:
+                w.clear(); w.addItems(cols)
+            self.combo_target.clear()
+            self.combo_target.addItem('Select Target')
+            self.combo_target.addItems(cols)
+            if self.submission_df is not None:
+                ids = list(self.submission_df.columns)
+            else:
+                ids = cols
+            self.combo_id.clear(); self.combo_id.addItems(ids)
+            self.update_pp_info(); self.update_enc(); self.update_viz()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
