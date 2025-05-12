@@ -62,6 +62,14 @@ class DataAnalysisTool(QMainWindow):
     # --- Load Data ---
     def create_load_tab(self):
         t = QWidget(); l = QVBoxLayout()
+         # 1) Creo il label con il messaggio
+        label = QLabel(
+            "Please select the target column first in the Model tab."
+        )
+        # 2) Allineo al centro
+        label.setAlignment(Qt.AlignCenter)
+        # 3) Lo aggiungo al layout
+        l.addWidget(label)
         h = QHBoxLayout()
         self.btn_load_train = QPushButton('Load Train Dataset')
         self.btn_load_test  = QPushButton('Load Test Dataset')
