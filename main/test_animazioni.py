@@ -17,6 +17,8 @@ from sklearn.metrics import (
 )
 from xgboost import XGBClassifier, XGBRegressor
 from lightgbm import LGBMClassifier, LGBMRegressor
+from PyQt5.QtGui import QFontDatabase, QFont
+from widgets import AnimatedButton
 
 class DataAnalysisTool(QMainWindow):
     def __init__(self):
@@ -751,12 +753,22 @@ class DataAnalysisTool(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    # load the QSS stylesheet manually
-    with open(r"C:\Users\fabri\Desktop\Progetto_Finale_Corso_Python\main\style.qss", 'r') as f:
-        qss = f.read()
+    # 1) Registra il font Roboto
+    font_path = os.path.join(os.path.dirname(__file__), "fonts", "Roboto-Regular.ttf")
+    font_id = QFontDatabase.addApplicationFont(font_path)
+    if font_id != -1:
+        family = QFontDatabase.applicationFontFamilies(font_id)[0]
+        app.setFont(QFont(family))
+    else:
+        print("⚠️ Roboto non caricato, uso il font di sistema.")
 
-    # 3. Applica lo stylesheet all’app
-    app.setStyleSheet(qss)
+    # 2) Carica e applica lo stylesheet
+    qss_path = os.path.join(os.path.dirname(__file__), "style.qss")
+    with open(qss_path, 'r', encoding='utf-8') as f:
+        app.setStyleSheet(f.read())
+
+    # 3) Istanzia e mostra la finestra principale
     w = DataAnalysisTool()
+    w.show()
     sys.exit(app.exec_())
 
