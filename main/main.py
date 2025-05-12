@@ -20,7 +20,7 @@ from lightgbm import LGBMClassifier, LGBMRegressor
 from PyQt5.QtGui import QFontDatabase, QFont
 from widgets import AnimatedButton
 
-class DataAnalysisTool(QMainWindow):
+class DataAnalysisTool(QMainWindow): # Classe principale
     def __init__(self):
         super().__init__()
         self.train_df = None
@@ -31,11 +31,11 @@ class DataAnalysisTool(QMainWindow):
         self.best_params = None
         self.feature_cols = None
         self.current_figsize = (10, 8)
-        self.init_ui()
+        self.init_ui() # Inizializza l'interfaccia utente
 
     def init_ui(self):
-        self.setWindowTitle('BeKC-Easy')
-        self.setGeometry(100, 100, 1300, 900)
+        self.setWindowTitle('BeFirstKC') # Titolo della finestra
+        self.setGeometry(100, 100, 1300, 900) # Dimensioni della finestra
         self.tabs = QTabWidget()
         self.create_load_tab()
         self.create_preprocess_tab()
@@ -54,23 +54,23 @@ class DataAnalysisTool(QMainWindow):
 
         self.show()
 
-    def check_enable_tabs(self, idx):
-        if idx > 0:  # >0 significa che ho selezionato un target reale
+    def check_enable_tabs(self, idx): # Controlla se il target è selezionato
+        if idx > 0:  # > 0 significa che ha selezionato un target reale
             for i in range(self.tabs.count()):
                 self.tabs.setTabEnabled(i, True)
 
-    # --- Load Data ---
+    # Carica i dati
     def create_load_tab(self):
         t = QWidget(); l = QVBoxLayout()
-         # 1) Creo il label con il messaggio
+         # Crea il label con il messaggio
         label = QLabel(
             "Please select the target column first in the Model tab."
         )
-        # 2) Allineo al centro
+        # Allinea al centro
         label.setAlignment(Qt.AlignCenter)
-        # 3) Lo aggiungo al layout
+        # Lo aggiunge al layout
         l.addWidget(label)
-        h = QHBoxLayout()
+        h = QHBoxLayout() # Layout per il caricamento dei file
         self.btn_load_train = QPushButton('Load Train Dataset')
         self.btn_load_test  = QPushButton('Load Test Dataset')
         self.btn_load_train.clicked.connect(lambda: self.load_file('train'))
@@ -83,18 +83,18 @@ class DataAnalysisTool(QMainWindow):
         h.addWidget(self.combo_head_ds)
         l.addLayout(h)
 
-        h2 = QHBoxLayout()
+        h2 = QHBoxLayout() # Layout per il numero di righe da mostrare
         h2.addWidget(QLabel('Rows to show:'))
         self.spin_head_rows = QSpinBox(); self.spin_head_rows.setRange(1, 1000); self.spin_head_rows.setValue(5)
         self.spin_head_rows.valueChanged.connect(self.update_head_view)
         h2.addWidget(self.spin_head_rows); h2.addStretch()
         l.addLayout(h2)
 
-        self.table_head = QTableWidget()
+        self.table_head = QTableWidget() # Tabella per mostrare i dati
         self.table_head.setEditTriggers(QTableWidget.NoEditTriggers)
         l.addWidget(self.table_head)
 
-        l.addWidget(QLabel('Statistics (numeric columns):'))
+        l.addWidget(QLabel('Statistics (numeric columns):')) # Tabella per le statistiche
         self.table_describe = QTableWidget()
         self.table_describe.setEditTriggers(QTableWidget.NoEditTriggers)
         l.addWidget(self.table_describe)
@@ -102,6 +102,7 @@ class DataAnalysisTool(QMainWindow):
         t.setLayout(l)
         self.tabs.addTab(t, 'Load Data')
 
+    # Load train/test data
     def load_file(self, which):
         fn, _ = QFileDialog.getOpenFileName(
             self, f'Load {which.title()} Dataset', '',
@@ -122,6 +123,7 @@ class DataAnalysisTool(QMainWindow):
             QMessageBox.critical(self, 'Load Error', str(e))
             traceback.print_exc()
 
+    # Metodo per il caricamento del file di submission
     def update_head_view(self):
         ds = self.combo_head_ds.currentText().lower()
         df = getattr(self, f"{ds}_df")
@@ -148,15 +150,15 @@ class DataAnalysisTool(QMainWindow):
                     self.table_describe.setItem(i, j, QTableWidgetItem(f"{desc.at[stat, col]:.4f}"))
             self.table_describe.resizeColumnsToContents()
 
-    # --- Preprocess Numeric ---
+    # Metodo per il caricamento del file di submission
     def create_preprocess_tab(self):
         t = QWidget(); l = QVBoxLayout()
         ds = QHBoxLayout(); ds.addWidget(QLabel('Dataset:'))
-        self.combo_pp_ds = QComboBox(); self.combo_pp_ds.addItems(['Train','Test','Both'])
+        self.combo_pp_ds = QComboBox(); self.combo_pp_ds.addItems(['Train','Test','Both']) # ComboBox per la selezione del dataset (anche entrambi)
         self.combo_pp_ds.currentIndexChanged.connect(self.update_pp_info)
         ds.addWidget(self.combo_pp_ds); l.addLayout(ds)
 
-        sp = QSplitter(Qt.Horizontal)
+        sp = QSplitter(Qt.Horizontal) # Layout per la selezione delle colonne
         sw = QWidget(); sl = QVBoxLayout()
         sa = QPushButton('Select All'); da = QPushButton('Deselect All')
         sa.clicked.connect(lambda: self.list_pp_cols.selectAll())
@@ -165,21 +167,21 @@ class DataAnalysisTool(QMainWindow):
         self.list_pp_cols = QListWidget(); self.list_pp_cols.setSelectionMode(QListWidget.MultiSelection)
         sl.addWidget(self.list_pp_cols); sw.setLayout(sl)
 
-        tg = QGroupBox('Transforms'); tl = QVBoxLayout()
-        yb = QPushButton('Yeo-Johnson'); ss = QPushButton('Standard Scaling')
+        tg = QGroupBox('Transforms'); tl = QVBoxLayout() # Layout per le trasformazioni
+        yb = QPushButton('Yeo-Johnson'); ss = QPushButton('Standard Scaling') # Pulsanti per le trasformazioni (Yeo-Johnson e Standard Scaling)
         yb.clicked.connect(self.apply_yeo); ss.clicked.connect(self.apply_std)
         tl.addWidget(yb); tl.addWidget(ss); tg.setLayout(tl)
 
         sp.addWidget(sw); sp.addWidget(tg); l.addWidget(sp)
 
-        ig = QGroupBox('Info & Missing'); il = QVBoxLayout()
+        ig = QGroupBox('Info & Missing'); il = QVBoxLayout() # Layout per le informazioni e i valori mancanti
         self.text_info = QPlainTextEdit(); self.text_info.setReadOnly(True)
         self.text_nan  = QPlainTextEdit(); self.text_nan.setReadOnly(True)
         il.addWidget(QLabel('Info:'));    il.addWidget(self.text_info)
         il.addWidget(QLabel('Missing:')); il.addWidget(self.text_nan)
         ig.setLayout(il); l.addWidget(ig)
 
-        hb = QHBoxLayout()
+        hb = QHBoxLayout() # Layout per le operazioni di preprocessing
         dn = QPushButton('Drop NaN'); dn.clicked.connect(self.pp_dropna)
         im = QComboBox(); im.addItems(['Mean','Median','Mode'])
         ib = QPushButton('Impute Numeric'); ib.clicked.connect(self.pp_impute)
@@ -188,7 +190,7 @@ class DataAnalysisTool(QMainWindow):
 
         t.setLayout(l); self.tabs.addTab(t,'Preprocess')
 
-    def update_pp_info(self):
+    def update_pp_info(self): # Metodo per aggiornare le informazioni sulle colonne
         ds = self.combo_pp_ds.currentText()
         # seleziono df per info, ma elenco colonne in base a "Both" o singolo
         if ds == 'Train':
@@ -205,7 +207,7 @@ class DataAnalysisTool(QMainWindow):
             cols_test  = set(self.test_df.select_dtypes(include=np.number).columns)
             numeric_cols = sorted(cols_train & cols_test)
 
-        # tolgo il target
+        # rimuove il target
         tgt = self.combo_target.currentText()
         if tgt in numeric_cols:
             numeric_cols.remove(tgt)
@@ -221,7 +223,7 @@ class DataAnalysisTool(QMainWindow):
         else:
             self.text_info.clear(); self.text_nan.clear()
 
-    def apply_yeo(self):
+    def apply_yeo(self): # Metodo per applicare la trasformazione Yeo-Johnson
         ds = self.combo_pp_ds.currentText()
         sel = [i.text() for i in self.list_pp_cols.selectedItems()]
         cols = [c for c in sel if c != self.combo_target.currentText()]
@@ -229,7 +231,7 @@ class DataAnalysisTool(QMainWindow):
             QMessageBox.warning(self, 'Transform Error', 'Nessuna colonna valida selezionata')
             return
 
-        # 1) Scegli il DataFrame
+        # Sceglie il DataFrame
         if ds == 'Both':
             dfs = []
             if self.train_df is not None:
@@ -242,16 +244,16 @@ class DataAnalysisTool(QMainWindow):
             dfs = [(name, df_sel)] if df_sel is not None else []
 
         for name, df in dfs:
-            # 2) Rimuovi colonne costanti
+            # Rimuove colonne costanti
             valid = [c for c in cols if c in df.columns and df[c].nunique() > 1]
             skipped = set(cols) - set(valid)
             if skipped:
                 print(f"[{name}] saltate costanti: {skipped}")
 
-            # 3) Pulisci NaN e infiniti
+            # Pulisce NaN e infiniti
             df[valid] = df[valid].replace([np.inf, -np.inf], np.nan).fillna(df[valid].median())
 
-            # 4) Applica Yeo–Johnson colonna per colonna
+            # Applica Yeo–Johnson colonna per colonna
             pt = PowerTransformer(method='yeo-johnson', standardize=True)
             for col in valid:
                 try:
@@ -264,20 +266,20 @@ class DataAnalysisTool(QMainWindow):
         self.update_viz()
 
 
-    def apply_std(self):
+    def apply_std(self): # Metodo per applicare lo standard scaling
         ds = self.combo_pp_ds.currentText()
         sel = [i.text() for i in self.list_pp_cols.selectedItems()]
         cols = [c for c in sel if c != self.combo_target.currentText()]
         if not cols:
             QMessageBox.warning(self,'Transform Error','Nessuna colonna valida selezionata'); return
 
-        if ds == 'Both':
+        if ds == 'Both': # Seleziona i DataFrame
             if self.train_df is not None:
-                sc1 = StandardScaler()
+                sc1 = StandardScaler() # StandardScaler per il train
                 self.train_df[cols] = sc1.fit_transform(self.train_df[cols])
             if self.test_df is not None:
                 cols_t = [c for c in cols if c in self.test_df.columns]
-                sc2 = StandardScaler()
+                sc2 = StandardScaler() # StandardScaler per il test
                 self.test_df[cols_t] = sc2.fit_transform(self.test_df[cols_t])
         else:
             df = self.get_pp_df()
@@ -286,7 +288,7 @@ class DataAnalysisTool(QMainWindow):
 
         self.update_pp_info(); self.update_viz()
 
-    def pp_dropna(self):
+    def pp_dropna(self): # Metodo per rimuovere i valori NaN
         ds = self.combo_pp_ds.currentText()
         if ds == 'Both':
             if self.train_df is not None: self.train_df.dropna(inplace=True)
@@ -296,7 +298,7 @@ class DataAnalysisTool(QMainWindow):
             if df is not None: df.dropna(inplace=True)
         self.update_pp_info()
 
-    def pp_impute(self):
+    def pp_impute(self): # Metodo per imputare i valori NaN
         ds = self.combo_pp_ds.currentText()
         m = self.combo_imp.currentText()
         targets = []
@@ -322,7 +324,7 @@ class DataAnalysisTool(QMainWindow):
     def get_pp_df(self):
         return self.train_df if self.combo_pp_ds.currentText()=='Train' else self.test_df
 
-    # --- Categorical Impute ---
+    # Imputazione delle features categoriche
     def create_cat_impute_tab(self):
         t = QWidget(); l = QVBoxLayout()
         ds = QHBoxLayout(); ds.addWidget(QLabel('Dataset:'))
@@ -334,7 +336,7 @@ class DataAnalysisTool(QMainWindow):
         h2 = QHBoxLayout()
         h2.addWidget(QLabel('Strategy:'))
         self.combo_cat_imp_strategy = QComboBox()
-        self.combo_cat_imp_strategy.addItems(['Mode','Constant','Random'])
+        self.combo_cat_imp_strategy.addItems(['Mode','Constant','Random']) # Modalità di imputazione
         h2.addWidget(self.combo_cat_imp_strategy)
         l.addLayout(h2)
 
@@ -352,7 +354,7 @@ class DataAnalysisTool(QMainWindow):
 
         t.setLayout(l); self.tabs.addTab(t,'Impute Cat')
 
-    def update_cat_imp(self):
+    def update_cat_imp(self): # Metodo per aggiornare le colonne da imputare
         ds = self.combo_cat_imp_ds.currentText()
         self.list_cat_imp_cols.clear()
         cols = []
@@ -367,11 +369,11 @@ class DataAnalysisTool(QMainWindow):
                 cols += self.train_df.select_dtypes(exclude=np.number).columns.tolist()
             if self.test_df is not None:
                 cols += self.test_df.select_dtypes(exclude=np.number).columns.tolist()
-            # keep unique, preserve order
+            # Mantiene solo le colonne uniche
             cols = list(dict.fromkeys(cols))
         self.list_cat_imp_cols.addItems(cols)
 
-    def apply_cat_impute(self):
+    def apply_cat_impute(self): # Metodo per imputare le colonne categoriche
         strategy = self.combo_cat_imp_strategy.currentText()
         cols = [i.text() for i in self.list_cat_imp_cols.selectedItems()]
         if not cols:
@@ -395,8 +397,8 @@ class DataAnalysisTool(QMainWindow):
         QMessageBox.information(self,'Impute Cat',f'Imputed {cols} using {strategy}')
         self.update_pp_info(); self.update_enc(); self.update_viz(); self.update_all_lists()
 
-    # --- Encode ---
-    def create_encode_tab(self):
+    # Encoding
+    def create_encode_tab(self): # Metodo per l'encoding delle colonne categoriche
         t = QWidget(); l = QVBoxLayout()
         l.addWidget(QLabel('Dataset:'))
         self.combo_enc_ds = QComboBox(); self.combo_enc_ds.addItems(['Train','Test','Both'])
@@ -420,7 +422,7 @@ class DataAnalysisTool(QMainWindow):
 
         t.setLayout(l); self.tabs.addTab(t,'Encode')
 
-    def update_enc(self):
+    def update_enc(self): # Metodo per aggiornare le colonne da codificare
         ds = self.combo_enc_ds.currentText()
         self.list_enc.clear()
         cols = []
@@ -438,7 +440,7 @@ class DataAnalysisTool(QMainWindow):
             cols = list(dict.fromkeys(cols))
         self.list_enc.addItems(cols)
 
-    def apply_enc(self):
+    def apply_enc(self): # Metodo per applicare l'encoding
         cols = [i.text() for i in self.list_enc.selectedItems()]
         if not cols:
             QMessageBox.warning(self,'Encode','No columns selected'); return
@@ -469,8 +471,8 @@ class DataAnalysisTool(QMainWindow):
         QMessageBox.information(self,'Encode','Applied encoding')
         self.update_enc(); self.update_pp_info(); self.update_all_lists()
 
-    # --- Visualize ---
-    def create_visualize_tab(self):
+    # Visualizzazione
+    def create_visualize_tab(self): # Metodo per la visualizzazione dei dati
         t = QWidget(); l = QVBoxLayout()
         c = QHBoxLayout(); c.addWidget(QLabel('Dataset:'))
         self.combo_viz_ds = QComboBox(); self.combo_viz_ds.addItems(['Train','Test'])
@@ -494,13 +496,13 @@ class DataAnalysisTool(QMainWindow):
         sp.setSizes([200,800]); l.addWidget(sp)
         t.setLayout(l); self.tabs.addTab(t,'Visualize')
 
-    def update_viz(self):
+    def update_viz(self): # Metodo per aggiornare le colonne da visualizzare
         df = self.train_df if self.combo_viz_ds.currentText()=='Train' else self.test_df
         self.list_viz_cols.clear()
         if df is not None:
             self.list_viz_cols.addItems(df.select_dtypes(include=np.number).columns)
 
-    def plot_viz(self):
+    def plot_viz(self): # Metodo per visualizzare i dati
         df = self.train_df if self.combo_viz_ds.currentText()=='Train' else self.test_df
         cols = [i.text() for i in self.list_viz_cols.selectedItems()]
         if df is None or not cols: return
@@ -521,8 +523,8 @@ class DataAnalysisTool(QMainWindow):
             QMessageBox.warning(self,'Plot Error',str(e))
         self.canvas.draw()
 
-    # --- Model & Optuna ---
-    def create_model_tab(self):
+    # Model e Optuna
+    def create_model_tab(self): # Metodo per la creazione del modello
         t = QWidget(); l = QVBoxLayout()
         l.addWidget(QLabel('Drop Columns:'))
         hb = QHBoxLayout()
@@ -536,7 +538,7 @@ class DataAnalysisTool(QMainWindow):
 
         l.addWidget(QLabel('Target:')); self.combo_target = QComboBox(); l.addWidget(self.combo_target)
         l.addWidget(QLabel('Model:')); self.combo_model = QComboBox()
-        self.combo_model.addItems(['XGBoost Classifier','XGBoost Regressor','LightGBM Classifier','LightGBM Regressor'])
+        self.combo_model.addItems(['XGBoost Classifier','XGBoost Regressor','LightGBM Classifier','LightGBM Regressor']) # Modelli disponibili
         l.addWidget(self.combo_model)
 
         tb = QPushButton('Train'); tb.clicked.connect(self.train_model); l.addWidget(tb)
@@ -554,7 +556,7 @@ class DataAnalysisTool(QMainWindow):
         self.text_model_res = QPlainTextEdit(); self.text_model_res.setReadOnly(True); l.addWidget(self.text_model_res)
         t.setLayout(l); self.tabs.addTab(t,'Model')
 
-    def update_all_lists(self):
+    def update_all_lists(self): # Metodo per aggiornare tutte le liste
         cols = list(self.train_df.columns) if self.train_df is not None else []
         for w in [self.list_pp_cols, self.list_model_drop]:
             w.clear(); w.addItems(cols)
@@ -566,7 +568,7 @@ class DataAnalysisTool(QMainWindow):
         self.combo_id.clear(); self.combo_id.addItems(ids)
         self.update_pp_info(); self.update_enc(); self.update_viz()
 
-    def model_drop(self):
+    def model_drop(self): # Metodo per rimuovere le colonne selezionate
         to_drop = [i.text() for i in self.list_model_drop.selectedItems()]
         if not to_drop:
             QMessageBox.warning(self,'Model','No columns selected'); return
@@ -577,7 +579,7 @@ class DataAnalysisTool(QMainWindow):
         self.update_all_lists()
         QMessageBox.information(self,'Model',f'Dropped {to_drop}')
 
-    def train_model(self):
+    def train_model(self): # Metodo per addestrare il modello
         if self.train_df is None:
             QMessageBox.warning(self,'Model','Load train data first'); return
         df = self.train_df.copy(); tgt = self.combo_target.currentText()
@@ -623,7 +625,7 @@ class DataAnalysisTool(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self,'Train Error',str(e)); traceback.print_exc()
 
-    def optimize_model(self):
+    def optimize_model(self): # Metodo per ottimizzare il modello
         if self.train_df is None:
             QMessageBox.warning(self,'Model','Load train data first'); return
         df = self.train_df.copy(); tgt = self.combo_target.currentText()
@@ -658,7 +660,7 @@ class DataAnalysisTool(QMainWindow):
         self.btn_train_best.setEnabled(True)
         self.text_model_res.setPlainText(f"Best params: {self.best_params}\nBest score: {study.best_value:.4f}")
 
-    def train_best(self):
+    def train_best(self): # Metodo per addestrare il miglior modello
         if self.train_df is None or not self.best_params: return
         is_clf = 'Classifier' in self.combo_model.currentText()
         params = self.best_params
@@ -700,7 +702,7 @@ class DataAnalysisTool(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self,'Train Best Error',str(e)); traceback.print_exc()
 
-    def save_model(self):
+    def save_model(self): # Metodo per salvare il modello
         if not self.model:
             QMessageBox.warning(self,'Save Model','No model to save'); return
         fn, _ = QFileDialog.getSaveFileName(self,'Save Model','','Pickle Files (*.pkl);;All Files (*)')
@@ -711,7 +713,7 @@ class DataAnalysisTool(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self,'Save Error',str(e))
 
-    # --- Submission ---
+    # Submission
     def create_submission_tab(self):
         t = QWidget(); l = QVBoxLayout()
         l.addWidget(QLabel('Submission'))
@@ -720,7 +722,7 @@ class DataAnalysisTool(QMainWindow):
         btn = QPushButton('Generate Submission'); btn.clicked.connect(self.generate_submission)
         l.addWidget(btn); t.setLayout(l); self.tabs.addTab(t,'Submission')
 
-    def generate_submission(self):
+    def generate_submission(self): # Metodo per generare il file di submission
         if not self.model or self.test_df is None:
             QMessageBox.warning(self,'Submission','Train model and load test data first'); return
         idc = self.combo_id.currentText()
@@ -745,7 +747,7 @@ class DataAnalysisTool(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self,'Submission Error',str(e))
 
-    def update_all_lists(self):
+    def update_all_lists(self): # Metodo per aggiornare tutte le liste
             cols = list(self.train_df.columns) if self.train_df is not None else []
             for w in [self.list_pp_cols, self.list_model_drop]:
                 w.clear(); w.addItems(cols)
@@ -761,7 +763,7 @@ class DataAnalysisTool(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    # 1) Registra il font Roboto
+    # Registra il font Roboto
     font_path = os.path.join(os.path.dirname(__file__), "fonts", "Roboto-Regular.ttf")
     font_id = QFontDatabase.addApplicationFont(font_path)
     if font_id != -1:
@@ -770,12 +772,12 @@ if __name__ == '__main__':
     else:
         print("⚠️ Roboto non caricato, uso il font di sistema.")
 
-    # 2) Carica e applica lo stylesheet
+    # Carica e applica lo stylesheet
     qss_path = os.path.join(os.path.dirname(__file__), "style.qss")
     with open(qss_path, 'r', encoding='utf-8') as f:
         app.setStyleSheet(f.read())
 
-    # 3) Istanzia e mostra la finestra principale
+    # Istanzia e mostra la finestra principale
     w = DataAnalysisTool()
     w.show()
     sys.exit(app.exec_())
