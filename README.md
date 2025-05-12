@@ -1,4 +1,4 @@
-# Animated Glow Button in PyQt5
+# BeFirstKC
 
 Questo progetto nasce come esercizio di apprendimento per un junior Python developer con un interesse crescente verso la **Data Analysis** e **Machine Learning**. L'obiettivo è quello di combinare analisi dei dati con un'interfaccia grafica interattiva costruita con **PyQt5**, esplorando concetti fondamentali come:
     - Manipolazione dei dati con Python (lato backend),
@@ -24,16 +24,12 @@ Questo progetto nasce come esercizio di apprendimento per un junior Python devel
 
 ## Requisiti
 
-- Python 3.7+
+- Python 3.10+
 - PyQt5
 
 ## Installazione e Avvio
 
 Installa le dipendenze:
-
-```bash
-pip install PyQt5
-```
 
 Clona il repository ed esegui il progetto:
 
