@@ -24,7 +24,7 @@ Questo progetto nasce come esercizio di apprendimento per un junior Python devel
 
 ## Requisiti
 
-- Python 3.10+
+- Python 3.10
 - PyQt5
 
 ## Installazione e Avvio
