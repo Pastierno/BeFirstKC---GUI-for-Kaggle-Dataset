@@ -1,8 +1,8 @@
 # BeFirstKC
 
 Questo progetto nasce come esercizio di apprendimento per uno junior Python developer con un interesse crescente verso la **Data Analysis** e **Machine Learning**. L'obiettivo è quello di combinare analisi dei dati con un'interfaccia grafica interattiva costruita con **PyQt5**, esplorando concetti fondamentali come:
-    - Manipolazione dei dati con Python (lato backend),
-    - Presentazione di elementi visivi interattivi (lato frontend),
+    - Manipolazione dei dati con Python,
+    - Presentazione di elementi visivi interattivi,
     - Gestione di animazioni e feedback visivi per l'utente.
 
 
